@@ -146,7 +146,6 @@
 
   <script>
     // --- CONFIGURATION ---
-    // The exact name of the file in your GitHub repository
     const GITHUB_FILE_NAME = 'data.xlsx'; 
     // ---------------------
 
@@ -194,7 +193,6 @@
     }
     function toFixedSafe(x, d=2){ return Number.isFinite(x) ? x.toFixed(d) : '—'; }
 
-    // Sparkline
     function renderSparkline(values, width=80, height=28){
       if (!values || values.length === 0) return '';
       const minV = Math.min(...values);
@@ -215,15 +213,16 @@
 
     /* -------------------- AUTO FETCH LOGIC -------------------- */
     async function loadGithubData() {
+      // Ensure overlay is visible at start
       loadingOverlay.classList.remove('hidden');
       statusMsg.textContent = 'Syncing data...';
       
       try {
-        // Fetch relative path. Works perfectly on GitHub Pages
         const response = await fetch('./' + GITHUB_FILE_NAME);
         
         if (!response.ok) {
-            throw new Error(`Could not find ${GITHUB_FILE_NAME} (Status: ${response.status})`);
+            // If file is missing, we throw error but we MUST clear the overlay
+            throw new Error(`Could not find ${GITHUB_FILE_NAME}`);
         }
 
         const arrayBuffer = await response.arrayBuffer();
@@ -234,6 +233,7 @@
         
         const sheet = XLSX.utils.sheet_to_json(ws, { header: 1 });
         processSheet(sheet);
+        
         statusMsg.textContent = 'Data loaded successfully';
         statusMsg.classList.add('text-emerald-600');
         
@@ -241,9 +241,14 @@
         console.error(error);
         statusMsg.textContent = 'Auto-load failed. Please upload manually.';
         statusMsg.classList.add('text-red-500');
-        alert(`Auto-load Error: ${error.message}\n\nPlease ensure a file named "${GITHUB_FILE_NAME}" exists in your repository.`);
+        // Optional: Alert user only if it's a real error, not just missing file on first run
+        // alert(`Auto-load Error: ${error.message}`);
       } finally {
-        loadingOverlay.classList.add('hidden');
+        // THIS IS THE FIX: forcefully hide overlay no matter what happens
+        setTimeout(() => {
+            loadingOverlay.classList.add('hidden');
+            loadingOverlay.style.display = 'none'; // Double assurance
+        }, 500); // Small delay so user sees "Success" state if they want
       }
     }
 
@@ -317,7 +322,7 @@
       renderTable();
     }
 
-    // ... [Render Helpers kept same as original, omitted for brevity] ...
+    // Render Helpers
     function renderSummary(){
       if (!currentData.length) return;
       const minEventsForAvg = 5;
@@ -342,6 +347,7 @@
           <p class="text-2xl font-bold">${topEvents.events}</p>
         </div>`;
     }
+
     function renderTable(){
       const term        = searchInput.value.trim().toLowerCase();
       const minEvents   = Number(minEventsInput.value) || 1;
@@ -397,6 +403,7 @@
         });
       });
     }
+
     function openPlayerModal(player, outliersOn){
       const stats = playerMap[player];
       modalTitle.textContent = player;
@@ -455,6 +462,12 @@
     applyFieldBtn.addEventListener('click', renderTable);
     modalClose.addEventListener('click', () => modal.classList.add('hidden'));
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+    
+    // Fail-safe: click overlay to remove it
+    loadingOverlay.addEventListener('click', () => {
+        loadingOverlay.classList.add('hidden');
+        loadingOverlay.style.display = 'none';
+    });
 
     // *** Initialize Auto-Load ***
     window.addEventListener('DOMContentLoaded', loadGithubData);
