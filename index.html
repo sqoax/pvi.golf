@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PVI Analyzer · Pro Edition v1.4</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    html { scroll-behavior:smooth; }
+    body { font-family:Inter,system-ui,Avenir,Helvetica,Arial,sans-serif; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .chip { display:inline-block; padding:0.1rem 0.4rem; border-radius:9999px; font-size:0.75rem; }
+    .chip.green { background: rgba(16,185,129,0.15); color:#10b981; }
+    .chip.red { background: rgba(239,68,68,0.15); color:#ef4444; }
+    .chip.gray { background: rgba(107,114,128,0.15); color:#6b7280; }
+    .sparkline path { fill:none; stroke-width:1.5; }
+    .sparkline circle { r:2; }
+    /* Loading Overlay */
+    #loadingOverlay {
+        position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 50;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .dark #loadingOverlay { background: rgba(17, 24, 39, 0.9); }
+  </style>
+</head>
+<body class="min-h-full bg-gradient-to-br from-white via-sky-50 to-emerald-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-gray-800 dark:text-gray-100 transition-colors duration-300">
+
+  <div id="loadingOverlay" class="hidden">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
+    <p class="text-lg font-semibold animate-pulse">Fetching Data from GitHub...</p>
+  </div>
+
+  <header class="sticky top-0 z-30 bg-white/70 dark:bg-gray-900/70 backdrop-blur border-b border-gray-200 dark:border-gray-700 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-2xl font-bold tracking-tight select-none">PVI&nbsp;Analyzer<span class="text-emerald-500">.pro</span> <span class="text-xs ml-2 bg-emerald-600/10 text-emerald-600 px-2 py-0.5 rounded">v1.4</span></h1>
+      <div id="statusMsg" class="text-sm font-medium text-gray-500"></div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-8">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 ring-1 ring-gray-100 dark:ring-gray-700">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+        <div class="flex flex-col gap-2">
+          <label class="font-semibold">Search Player</label>
+          <div class="relative">
+            <input id="searchInput" type="text" placeholder="e.g. Scottie Scheffler" class="w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" />
+            <svg class="w-5 h-5 absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103 10.5a7.5 7.5 0 0013.65 6.15z"/></svg>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="font-semibold">Min Events</label>
+          <input id="minEventsInput" type="number" min="1" value="1" class="rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" />
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="font-semibold">Filters</label>
+          <div class="flex items-center gap-4 flex-wrap">
+            <label class="inline-flex items-center gap-2 text-sm">
+              <input id="above1Toggle" type="checkbox" class="rounded text-emerald-500 focus:ring-emerald-500">
+              Only ≥1 in all events
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm">
+              <input id="outlierToggle" type="checkbox" class="rounded text-emerald-500 focus:ring-emerald-500">
+              Highlight Z ≥ 2.0
+            </label>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+             <label class="font-semibold text-gray-400 text-xs uppercase">Override Data</label>
+             <input id="fileInput" type="file" accept=".xlsx" class="text-xs file:bg-gray-100 file:text-gray-600 file:rounded-md file:border-0 file:px-2 file:py-1 file:cursor-pointer hover:file:bg-gray-200 transition" />
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-4 mb-6">
+        <div class="flex items-center gap-2">
+          <label class="font-semibold">Sort by:</label>
+          <select id="sortSelect" class="rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500">
+            <option value="total">Total PVI</option>
+            <option value="average">Average PVI</option>
+            <option value="events">Events Played</option>
+            <option value="ci">Consistency Index (CI)</option>
+            <option value="vol">Volatility (StdDev)</option>
+            <option value="tm">Trend Momentum (Δ last3 vs prev3)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <label class="font-semibold block mb-2">Paste Field List</label>
+        <textarea id="fieldInput" class="w-full h-32 rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" placeholder="One player per line"></textarea>
+        <button id="applyFieldBtn" class="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 text-white shadow hover:bg-emerald-700 transition">
+          Apply Field
+        </button>
+      </div>
+
+      <div id="summaryContainer" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 hidden"></div>
+
+      <div class="overflow-x-auto ring-1 ring-gray-200 dark:ring-gray-700 rounded-lg shadow-lg">
+        <table id="dataTable" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-100 dark:bg-gray-700 sticky top-0 z-10">
+            <tr>
+              <th class="px-4 py-3 text-left text-sm font-semibold">Player</th>
+              <th class="px-4 py-3 text-center text-sm font-semibold">✓ ≥1</th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Total PVI</th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Avg PVI</th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Volatility<br><span class="text-xs opacity-70">(StdDev)</span></th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Consistency<br><span class="text-xs opacity-70">(CI = Avg/Std)</span></th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Trend Momentum<br><span class="text-xs opacity-70">(Last3 − Prev3)</span></th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Events</th>
+              <th class="px-4 py-3 text-right text-sm font-semibold">Sparkline</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-xl w-full max-h-full overflow-y-auto ring-1 ring-gray-200 dark:ring-gray-700">
+      <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <h2 id="modalTitle" class="text-xl font-semibold"></h2>
+        <button id="modalClose" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="modalBody" class="p-6 space-y-3 text-sm"></div>
+    </div>
+  </div>
+
+  <footer class="text-center py-6 text-sm text-gray-500 dark:text-gray-400 select-none">
+    Built with ❤️ by <span class="font-semibold text-emerald-600">PVI Analytics</span> · v1.4
+  </footer>
+
+  <script>
+    // --- CONFIGURATION ---
+    // The exact name of the file in your GitHub repository
+    const GITHUB_FILE_NAME = 'data.xlsx'; 
+    // ---------------------
+
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+
+    const fileInput        = document.getElementById('fileInput');
+    const searchInput      = document.getElementById('searchInput');
+    const minEventsInput   = document.getElementById('minEventsInput');
+    const sortSelect       = document.getElementById('sortSelect');
+    const above1Toggle     = document.getElementById('above1Toggle');
+    const outlierToggle    = document.getElementById('outlierToggle');
+    const tableBody        = document.getElementById('tableBody');
+    const summaryContainer = document.getElementById('summaryContainer');
+    const fieldInput       = document.getElementById('fieldInput');
+    const applyFieldBtn    = document.getElementById('applyFieldBtn');
+    const modal            = document.getElementById('modal');
+    const modalTitle       = document.getElementById('modalTitle');
+    const modalBody        = document.getElementById('modalBody');
+    const modalClose       = document.getElementById('modalClose');
+    const loadingOverlay   = document.getElementById('loadingOverlay');
+    const statusMsg        = document.getElementById('statusMsg');
+
+    let playerMap   = {}; 
+    let currentData = []; 
+    let eventOrder  = []; 
+    let eventStats  = {}; 
+
+    // Utils
+    function mean(arr){ if(!arr.length) return 0; return arr.reduce((a,b)=>a+b,0)/arr.length; }
+    function stddev(arr){
+      if (arr.length <= 1) return 0;
+      const m = mean(arr);
+      const v = arr.reduce((s,x)=>s + (x-m)*(x-m), 0) / (arr.length - 1);
+      return Math.sqrt(v);
+    }
+    function chunkMomentum(series){
+      if (series.length < 2) return 0;
+      const n = series.length;
+      const k = Math.min(3, Math.floor(n/2));
+      const last = series.slice(n-k);
+      const prev = series.slice(n-2*k, n-k);
+      return mean(last) - mean(prev);
+    }
+    function toFixedSafe(x, d=2){ return Number.isFinite(x) ? x.toFixed(d) : '—'; }
+
+    // Sparkline
+    function renderSparkline(values, width=80, height=28){
+      if (!values || values.length === 0) return '';
+      const minV = Math.min(...values);
+      const maxV = Math.max(...values);
+      const pad = 4;
+      const n = values.length;
+      const step = (width - 2*pad) / Math.max(1, n-1);
+      const scaleY = (val)=>{
+        if (maxV === minV) return height/2;
+        return pad + (height - 2*pad) * (1 - (val - minV)/(maxV - minV));
+      };
+      const points = values.map((v,i)=>[pad + i*step, scaleY(v)]);
+      const pathD = points.map((p,i)=> (i===0?`M${p[0]},${p[1]}`:`L${p[0]},${p[1]}`)).join(' ');
+      return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+        <path d="${pathD}" stroke="currentColor"></path>
+      </svg>`;
+    }
+
+    /* -------------------- AUTO FETCH LOGIC -------------------- */
+    async function loadGithubData() {
+      loadingOverlay.classList.remove('hidden');
+      statusMsg.textContent = 'Syncing data...';
+      
+      try {
+        // Fetch relative path. Works perfectly on GitHub Pages
+        const response = await fetch('./' + GITHUB_FILE_NAME);
+        
+        if (!response.ok) {
+            throw new Error(`Could not find ${GITHUB_FILE_NAME} (Status: ${response.status})`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const ws = wb.Sheets['Tourneys'] || wb.Sheets[wb.SheetNames[0]];
+        
+        if (!ws) throw new Error('Sheet "Tourneys" missing');
+        
+        const sheet = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        processSheet(sheet);
+        statusMsg.textContent = 'Data loaded successfully';
+        statusMsg.classList.add('text-emerald-600');
+        
+      } catch (error) {
+        console.error(error);
+        statusMsg.textContent = 'Auto-load failed. Please upload manually.';
+        statusMsg.classList.add('text-red-500');
+        alert(`Auto-load Error: ${error.message}\n\nPlease ensure a file named "${GITHUB_FILE_NAME}" exists in your repository.`);
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
+    }
+
+    /* -------------------- File handling -------------------- */
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const data = new Uint8Array(evt.target.result);
+        const wb   = XLSX.read(data, { type: 'array' });
+        const ws   = wb.Sheets['Tourneys'] || wb.Sheets[wb.SheetNames[0]];
+        if (!ws) { alert('No sheet named "Tourneys" found.'); return; }
+        const sheet = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        processSheet(sheet);
+        statusMsg.textContent = 'Manual file loaded';
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function processSheet(sheet){
+      playerMap = {};
+      eventOrder = [];
+      eventStats = {};
+
+      for (let c = 0; c < sheet[0].length; c += 3) {
+        const eventName = sheet[0][c];
+        if (!eventName) continue;
+        eventOrder.push(eventName);
+
+        const eventPVIs = [];
+        for (let r = 1; r < sheet.length; r++) {
+          const name = sheet[r][c];
+          const pvi  = sheet[r][c+1];
+          if (!name || pvi === undefined || pvi === '') continue;
+          eventPVIs.push(Number(pvi));
+
+          if (!playerMap[name]) playerMap[name] = { total:0, events:0, min:Infinity, scores:{}, series:[] };
+          playerMap[name].total  += Number(pvi);
+          playerMap[name].events += 1;
+          playerMap[name].min     = Math.min(playerMap[name].min, Number(pvi));
+          playerMap[name].scores[eventName] = Number(pvi);
+        }
+        const m = mean(eventPVIs);
+        const s = stddev(eventPVIs);
+        eventStats[eventName] = { mean: m, std: s };
+      }
+
+      for (const [name, obj] of Object.entries(playerMap)){
+        obj.series = eventOrder.map(ev => (obj.scores.hasOwnProperty(ev) ? obj.scores[ev] : null)).filter(v=>v!==null);
+        obj.avg = obj.total / obj.events;
+        obj.std = stddev(obj.series);
+        obj.ci  = (obj.std === 0 ? (obj.events > 1 ? Infinity : 0) : obj.avg / obj.std);
+        obj.tm  = chunkMomentum(obj.series);
+      }
+
+      currentData = Object.entries(playerMap).map(([player, obj]) => ({
+        player,
+        total: obj.total,
+        average: obj.avg,
+        events: obj.events,
+        allAboveOne: obj.min >= 1,
+        std: obj.std,
+        ci: obj.ci,
+        tm: obj.tm,
+        series: obj.series
+      }));
+
+      summaryContainer.classList.remove('hidden');
+      renderSummary();
+      renderTable();
+    }
+
+    // ... [Render Helpers kept same as original, omitted for brevity] ...
+    function renderSummary(){
+      if (!currentData.length) return;
+      const minEventsForAvg = 5;
+      const topTotal = [...currentData].sort((a,b)=>b.total - a.total)[0];
+      const topAvgCandidates = [...currentData].filter(d=>d.events >= minEventsForAvg).sort((a,b)=>b.average - a.average);
+      const topAvg = topAvgCandidates.length ? topAvgCandidates[0] : null;
+      const topEvents = [...currentData].sort((a,b)=>b.events - a.events)[0];
+      summaryContainer.innerHTML = `
+        <div class="bg-emerald-500/10 dark:bg-emerald-500/20 p-4 rounded-xl text-center shadow-sm">
+          <p class="text-sm font-medium">Top Total PVI</p>
+          <p class="text-lg font-semibold mt-1">${topTotal.player}</p>
+          <p class="text-2xl font-bold">${topTotal.total.toFixed(2)}</p>
+        </div>
+        <div class="bg-indigo-500/10 dark:bg-indigo-500/20 p-4 rounded-xl text-center shadow-sm">
+          <p class="text-sm font-medium">Top Avg PVI (≥${minEventsForAvg} events)</p>
+          <p class="text-lg font-semibold mt-1">${topAvg ? topAvg.player : '—'}</p>
+          <p class="text-2xl font-bold">${topAvg ? topAvg.average.toFixed(2) : '—'}</p>
+        </div>
+        <div class="bg-amber-500/10 dark:bg-amber-500/20 p-4 rounded-xl text-center shadow-sm">
+          <p class="text-sm font-medium">Most Events Played</p>
+          <p class="text-lg font-semibold mt-1">${topEvents.player}</p>
+          <p class="text-2xl font-bold">${topEvents.events}</p>
+        </div>`;
+    }
+    function renderTable(){
+      const term        = searchInput.value.trim().toLowerCase();
+      const minEvents   = Number(minEventsInput.value) || 1;
+      const sortKey     = sortSelect.value;
+      const onlyAbove1  = above1Toggle.checked;
+      const outliersOn  = outlierToggle.checked;
+      const currentField = new Set(
+        fieldInput.value.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean).map(s=>s.toLowerCase())
+      );
+      const data = currentData
+        .filter(d => d.player.toLowerCase().includes(term))
+        .filter(d => d.events >= minEvents)
+        .filter(d => !onlyAbove1 || d.allAboveOne)
+        .sort((a,b)=>{
+          if (sortKey === 'total')   return b.total   - a.total;
+          if (sortKey === 'average') return b.average - a.average;
+          if (sortKey === 'events')  return b.events  - a.events;
+          if (sortKey === 'ci')      return (b.ci === Infinity ? Number.MAX_SAFE_INTEGER : b.ci) - (a.ci === Infinity ? Number.MAX_SAFE_INTEGER : a.ci);
+          if (sortKey === 'vol')     return b.std     - a.std;
+          if (sortKey === 'tm')      return b.tm      - a.tm;
+          return 0;
+        });
+      tableBody.innerHTML = data.map(d => {
+        const highlight = currentField.has(d.player.toLowerCase());
+        const rowClasses = [
+          'hover:bg-gray-50','dark:hover:bg-gray-700','cursor-pointer','transition'
+        ];
+        if (highlight) rowClasses.push('bg-amber-100','dark:bg-amber-900/40','font-semibold');
+        const ciDisp = (d.ci === Infinity) ? '∞' : toFixedSafe(d.ci, 2);
+        const tmVal = d.tm;
+        let tmChipClass = 'gray', tmSign = '';
+        if (tmVal > 0.05) tmChipClass = 'green', tmSign = '+';
+        else if (tmVal < -0.05) tmChipClass = 'red';
+        const tmChip = `<span class="chip ${tmChipClass}" title="Avg(last 3) − Avg(prev 3)">${tmSign}${toFixedSafe(tmVal,2)}</span>`;
+        const spark = renderSparkline(d.series);
+        return `
+          <tr class="${rowClasses.join(' ')}" data-player="${d.player}">
+            <td class="px-4 py-3 font-medium">${d.player}</td>
+            <td class="px-4 py-3 text-center">${d.allAboveOne ? '✔️' : ''}</td>
+            <td class="px-4 py-3 text-right">${toFixedSafe(d.total)}</td>
+            <td class="px-4 py-3 text-right">${toFixedSafe(d.average)}</td>
+            <td class="px-4 py-3 text-right">${toFixedSafe(d.std)}</td>
+            <td class="px-4 py-3 text-right">${ciDisp}</td>
+            <td class="px-4 py-3 text-right">${tmChip}</td>
+            <td class="px-4 py-3 text-right">${d.events}</td>
+            <td class="px-2 py-3 text-right">${spark}</td>
+          </tr>`;
+      }).join('');
+      [...tableBody.querySelectorAll('tr')].forEach(tr => {
+        tr.addEventListener('click', () => {
+          const player = tr.dataset.player;
+          openPlayerModal(player, outliersOn);
+        });
+      });
+    }
+    function openPlayerModal(player, outliersOn){
+      const stats = playerMap[player];
+      modalTitle.textContent = player;
+      const rows = [];
+      for (const ev of eventOrder){
+        if (!(ev in stats.scores)) continue;
+        const p = stats.scores[ev];
+        const es = eventStats[ev] || {mean:0,std:0};
+        const z = es.std > 0 ? (p - es.mean) / es.std : 0;
+        let badge = '';
+        if (outliersOn){
+          const cls = Math.abs(z) >= 2 ? (z > 0 ? 'green' : 'red') : 'gray';
+          const label = Math.abs(z) >= 2 ? (z > 0 ? 'High Outlier' : 'Low Outlier') : 'Within Norm';
+          badge = `<span class="chip ${cls}" title="Z-Score">${label} • z=${toFixedSafe(z,2)}</span>`;
+        } else {
+          badge = `<span class="chip gray" title="Z-Score">z=${toFixedSafe(z,2)}</span>`;
+        }
+        rows.push(`<div class="flex justify-between items-center py-1">
+          <span>${ev}</span>
+          <span class="font-semibold">${toFixedSafe(p)}</span>
+          ${badge}
+        </div>`);
+      }
+      const ciDisp = (stats.std === 0 && stats.events > 1) ? '∞' : toFixedSafe(stats.avg / (stats.std || 1),2);
+      const tmDisp = toFixedSafe(chunkMomentum(stats.series),2);
+      modalBody.innerHTML = `
+        <div class="grid grid-cols-2 gap-3 mb-2 text-sm">
+          <div class="bg-emerald-500/10 dark:bg-emerald-500/20 p-3 rounded">
+            <div class="opacity-70">Avg PVI</div>
+            <div class="text-lg font-semibold">${toFixedSafe(stats.total / stats.events)}</div>
+          </div>
+          <div class="bg-indigo-500/10 dark:bg-indigo-500/20 p-3 rounded">
+            <div class="opacity-70">Volatility (StdDev)</div>
+            <div class="text-lg font-semibold">${toFixedSafe(stats.std)}</div>
+          </div>
+          <div class="bg-amber-500/10 dark:bg-amber-500/20 p-3 rounded">
+            <div class="opacity-70">Consistency Index</div>
+            <div class="text-lg font-semibold">${ciDisp}</div>
+          </div>
+          <div class="bg-rose-500/10 dark:bg-rose-500/20 p-3 rounded">
+            <div class="opacity-70">Trend Momentum</div>
+            <div class="text-lg font-semibold">${tmDisp}</div>
+          </div>
+        </div>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">${rows.join('')}</div>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    // Events
+    searchInput.addEventListener('input', renderTable);
+    minEventsInput.addEventListener('input', renderTable);
+    sortSelect.addEventListener('change', renderTable);
+    above1Toggle.addEventListener('change', renderTable);
+    outlierToggle.addEventListener('change', renderTable);
+    applyFieldBtn.addEventListener('click', renderTable);
+    modalClose.addEventListener('click', () => modal.classList.add('hidden'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+
+    // *** Initialize Auto-Load ***
+    window.addEventListener('DOMContentLoaded', loadGithubData);
+
+  </script>
+</body>
+</html>
