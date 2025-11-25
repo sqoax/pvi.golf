@@ -1,147 +1,219 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en" class="dark h-full antialiased">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PVI Analyzer · Pro Edition v1.4</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <title>PVI Analyzer · Pro</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            gray: {
+              750: '#2d3748',
+              850: '#1a202c',
+              950: '#0B0F19', // Deep dark background
+            },
+            emerald: {
+              450: '#10B981', // Custom pop
+            }
+          }
         }
       }
     }
   </script>
+  
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
   <style>
-    html { scroll-behavior:smooth; }
-    body { font-family:Inter,system-ui,Avenir,Helvetica,Arial,sans-serif; }
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    .chip { display:inline-block; padding:0.1rem 0.4rem; border-radius:9999px; font-size:0.75rem; }
-    .chip.green { background: rgba(16,185,129,0.15); color:#10b981; }
-    .chip.red { background: rgba(239,68,68,0.15); color:#ef4444; }
-    .chip.gray { background: rgba(107,114,128,0.15); color:#6b7280; }
-    .sparkline path { fill:none; stroke-width:1.5; }
-    .sparkline circle { r:2; }
-    /* Loading Overlay */
-    #loadingOverlay {
-        position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 50;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
+    /* Custom Scrollbar for a premium feel */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0B0F19; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+    
+    body { background-color: #0B0F19; color: #E5E7EB; }
+    
+    /* Utility */
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.4);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .dark #loadingOverlay { background: rgba(17, 24, 39, 0.9); }
+    
+    .input-base {
+      background: rgba(17, 24, 39, 0.6);
+      border: 1px solid rgba(75, 85, 99, 0.4);
+      color: white;
+      transition: all 0.2s ease;
+    }
+    .input-base:focus {
+      border-color: #10B981;
+      box-shadow: 0 0 0 1px #10B981; /* Ring */
+      outline: none;
+    }
+
+    /* Sparkline Tweaks */
+    .sparkline path { fill: none; stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+    
+    /* Loading Animation */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.33); opacity: 1; }
+      80%, 100% { transform: scale(1); opacity: 0; }
+    }
+    .ring-pulse::before {
+      content: '';
+      position: absolute;
+      left: -4px; top: -4px; height: 16px; width: 16px;
+      border-radius: 50%;
+      background-color: #10B981;
+      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
   </style>
 </head>
-<body class="min-h-full bg-gradient-to-br from-white via-sky-50 to-emerald-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-gray-800 dark:text-gray-100 transition-colors duration-300">
+<body class="min-h-full flex flex-col">
 
-  <div id="loadingOverlay" class="hidden">
-    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-    <p class="text-lg font-semibold animate-pulse">Fetching Data from GitHub...</p>
+  <div id="loadingOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F19] transition-opacity duration-500">
+    <div class="flex flex-col items-center">
+      <div class="relative w-12 h-12 mb-4">
+        <div class="absolute inset-0 border-t-2 border-emerald-500 rounded-full animate-spin"></div>
+        <div class="absolute inset-2 border-b-2 border-emerald-500/30 rounded-full animate-spin reverse"></div>
+      </div>
+      <p class="text-sm font-medium text-gray-400 tracking-widest uppercase animate-pulse">Syncing Database</p>
+    </div>
   </div>
 
-  <header class="sticky top-0 z-30 bg-white/70 dark:bg-gray-900/70 backdrop-blur border-b border-gray-200 dark:border-gray-700 shadow-sm">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-      <h1 class="text-2xl font-bold tracking-tight select-none">PVI&nbsp;Analyzer<span class="text-emerald-500">.pro</span> <span class="text-xs ml-2 bg-emerald-600/10 text-emerald-600 px-2 py-0.5 rounded">v1.4</span></h1>
-      <div id="statusMsg" class="text-sm font-medium text-gray-500"></div>
+  <header class="sticky top-0 z-40 w-full glass-panel border-b-0 border-b-white/5">
+    <div class="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-6 w-6 rounded bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-900/50">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <h1 class="text-lg font-bold tracking-tight text-white">PVI Analyzer <span class="text-gray-500 font-medium">Pro</span></h1>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <div class="relative flex h-2 w-2">
+          <span id="statusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span id="statusDot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </div>
+        <span id="statusMsg" class="text-xs font-medium text-gray-400">Connecting...</span>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-8">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 ring-1 ring-gray-100 dark:ring-gray-700">
+  <main class="flex-1 w-full max-w-[1400px] mx-auto px-6 py-8 space-y-6">
+
+    <div id="summaryContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 hidden opacity-0 transition-opacity duration-700">
+      </div>
+
+    <div class="glass-panel rounded-xl p-1 flex flex-col md:flex-row items-center gap-2 shadow-xl shadow-black/20">
       
-      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-        <div class="flex flex-col gap-2">
-          <label class="font-semibold">Search Player</label>
+      <div class="relative w-full md:w-80 group">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg class="h-4 w-4 text-gray-500 group-focus-within:text-emerald-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+        <input id="searchInput" type="text" placeholder="Search player..." class="input-base w-full rounded-lg py-2 pl-10 pr-4 text-sm placeholder-gray-500" />
+      </div>
+
+      <div class="h-8 w-px bg-white/10 hidden md:block mx-2"></div>
+
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto px-2">
+        
+        <div class="flex items-center gap-2 bg-gray-800/50 rounded-lg px-3 py-1.5 border border-white/5">
+          <span class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Min Events</span>
+          <input id="minEventsInput" type="number" min="1" value="1" class="bg-transparent border-none text-white text-sm w-12 text-right focus:ring-0 p-0 tabular-nums font-medium" />
+        </div>
+
+        <label class="flex items-center gap-2 cursor-pointer select-none group">
           <div class="relative">
-            <input id="searchInput" type="text" placeholder="e.g. Scottie Scheffler" class="w-full rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" />
-            <svg class="w-5 h-5 absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103 10.5a7.5 7.5 0 0013.65 6.15z"/></svg>
+            <input id="above1Toggle" type="checkbox" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
           </div>
-        </div>
-        <div class="flex flex-col gap-2">
-          <label class="font-semibold">Min Events</label>
-          <input id="minEventsInput" type="number" min="1" value="1" class="rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <label class="font-semibold">Filters</label>
-          <div class="flex items-center gap-4 flex-wrap">
-            <label class="inline-flex items-center gap-2 text-sm">
-              <input id="above1Toggle" type="checkbox" class="rounded text-emerald-500 focus:ring-emerald-500">
-              Only ≥1 in all events
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm">
-              <input id="outlierToggle" type="checkbox" class="rounded text-emerald-500 focus:ring-emerald-500">
-              Highlight Z ≥ 2.0
-            </label>
+          <span class="text-sm text-gray-400 group-hover:text-gray-200 transition-colors">Only ≥1</span>
+        </label>
+
+        <label class="flex items-center gap-2 cursor-pointer select-none group">
+          <div class="relative">
+            <input id="outlierToggle" type="checkbox" class="sr-only peer">
+            <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
           </div>
-        </div>
-        <div class="flex flex-col gap-2">
-             <label class="font-semibold text-gray-400 text-xs uppercase">Override Data</label>
-             <input id="fileInput" type="file" accept=".xlsx" class="text-xs file:bg-gray-100 file:text-gray-600 file:rounded-md file:border-0 file:px-2 file:py-1 file:cursor-pointer hover:file:bg-gray-200 transition" />
-        </div>
+          <span class="text-sm text-gray-400 group-hover:text-gray-200 transition-colors">Highlight Outliers</span>
+        </label>
+
       </div>
 
-      <div class="flex flex-wrap items-center gap-4 mb-6">
-        <div class="flex items-center gap-2">
-          <label class="font-semibold">Sort by:</label>
-          <select id="sortSelect" class="rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500">
-            <option value="total">Total PVI</option>
-            <option value="average">Average PVI</option>
-            <option value="events">Events Played</option>
-            <option value="ci">Consistency Index (CI)</option>
-            <option value="vol">Volatility (StdDev)</option>
-            <option value="tm">Trend Momentum (Δ last3 vs prev3)</option>
-          </select>
-        </div>
+      <div class="flex-1"></div>
+
+      <div class="w-full md:w-auto">
+        <select id="sortSelect" class="input-base w-full md:w-48 rounded-lg py-2 px-3 text-sm cursor-pointer">
+          <option value="total">Total PVI</option>
+          <option value="average">Average PVI</option>
+          <option value="events">Events Played</option>
+          <option value="ci">Consistency Index</option>
+          <option value="vol">Volatility</option>
+          <option value="tm">Trend Momentum</option>
+        </select>
       </div>
 
-      <div class="mb-6">
-        <label class="font-semibold block mb-2">Paste Field List</label>
-        <textarea id="fieldInput" class="w-full h-32 rounded-md border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 focus:ring-2 focus:ring-emerald-500" placeholder="One player per line"></textarea>
-        <button id="applyFieldBtn" class="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 text-white shadow hover:bg-emerald-700 transition">
-          Apply Field
-        </button>
-      </div>
+    </div>
 
-      <div id="summaryContainer" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 hidden"></div>
+    <div class="group relative">
+        <textarea id="fieldInput" class="input-base w-full h-12 focus:h-32 transition-all duration-300 rounded-lg py-2 px-3 text-sm placeholder-gray-500 resize-none" placeholder="Paste player list to highlight (one per line)..."></textarea>
+        <button id="applyFieldBtn" class="absolute top-2 right-2 text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded transition-colors shadow-lg">Apply</button>
+    </div>
 
-      <div class="overflow-x-auto ring-1 ring-gray-200 dark:ring-gray-700 rounded-lg shadow-lg">
-        <table id="dataTable" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead class="bg-gray-100 dark:bg-gray-700 sticky top-0 z-10">
+    <div class="glass-panel rounded-xl overflow-hidden shadow-2xl shadow-black/40 ring-1 ring-white/5">
+      <div class="overflow-x-auto">
+        <table id="dataTable" class="w-full text-left border-collapse">
+          <thead class="bg-gray-900/80 border-b border-white/5 uppercase text-[10px] tracking-widest text-gray-500 font-semibold sticky top-0 z-10 backdrop-blur-md">
             <tr>
-              <th class="px-4 py-3 text-left text-sm font-semibold">Player</th>
-              <th class="px-4 py-3 text-center text-sm font-semibold">✓ ≥1</th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Total PVI</th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Avg PVI</th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Volatility<br><span class="text-xs opacity-70">(StdDev)</span></th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Consistency<br><span class="text-xs opacity-70">(CI = Avg/Std)</span></th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Trend Momentum<br><span class="text-xs opacity-70">(Last3 − Prev3)</span></th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Events</th>
-              <th class="px-4 py-3 text-right text-sm font-semibold">Sparkline</th>
+              <th class="px-6 py-4">Player</th>
+              <th class="px-4 py-4 text-center">Status</th>
+              <th class="px-6 py-4 text-right">Total PVI</th>
+              <th class="px-6 py-4 text-right">Avg PVI</th>
+              <th class="px-6 py-4 text-right">Volatility</th>
+              <th class="px-6 py-4 text-right">Consistency</th>
+              <th class="px-6 py-4 text-right">Momentum</th>
+              <th class="px-6 py-4 text-right">Events</th>
+              <th class="px-6 py-4 text-right w-32">Trend</th>
             </tr>
           </thead>
-          <tbody id="tableBody" class="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700"></tbody>
+          <tbody id="tableBody" class="divide-y divide-white/5 text-sm text-gray-300">
+            </tbody>
         </table>
       </div>
     </div>
   </main>
 
-  <div id="modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-xl w-full max-h-full overflow-y-auto ring-1 ring-gray-200 dark:ring-gray-700">
-      <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <h2 id="modalTitle" class="text-xl font-semibold"></h2>
-        <button id="modalClose" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  <div id="modal" class="fixed inset-0 z-50 flex items-center justify-center px-4 hidden">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" id="modalBackdrop"></div>
+    
+    <div class="relative bg-[#0F1523] w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl shadow-black transform transition-all scale-100 overflow-hidden flex flex-col max-h-[85vh]">
+      
+      <div class="flex items-center justify-between border-b border-white/5 px-6 py-4 bg-white/5">
+        <h2 id="modalTitle" class="text-lg font-semibold text-white tracking-tight"></h2>
+        <button id="modalClose" class="text-gray-500 hover:text-white transition-colors">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>
       </div>
-      <div id="modalBody" class="p-6 space-y-3 text-sm"></div>
+
+      <div id="modalBody" class="p-6 overflow-y-auto custom-scrollbar"></div>
+      
     </div>
   </div>
 
-  <footer class="text-center py-6 text-sm text-gray-500 dark:text-gray-400 select-none">
-    Built with ❤️ by <span class="font-semibold text-emerald-600">PVI Analytics</span> · v1.4
+  <footer class="py-8 text-center text-xs text-gray-600">
+    <p>Powered by <span class="text-gray-500">PVI Analytics Engine</span></p>
   </footer>
 
   <script>
@@ -149,11 +221,6 @@
     const GITHUB_FILE_NAME = 'data.xlsx'; 
     // ---------------------
 
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.classList.add('dark');
-    }
-
-    const fileInput        = document.getElementById('fileInput');
     const searchInput      = document.getElementById('searchInput');
     const minEventsInput   = document.getElementById('minEventsInput');
     const sortSelect       = document.getElementById('sortSelect');
@@ -167,15 +234,18 @@
     const modalTitle       = document.getElementById('modalTitle');
     const modalBody        = document.getElementById('modalBody');
     const modalClose       = document.getElementById('modalClose');
+    const modalBackdrop    = document.getElementById('modalBackdrop');
     const loadingOverlay   = document.getElementById('loadingOverlay');
     const statusMsg        = document.getElementById('statusMsg');
+    const statusDot        = document.getElementById('statusDot');
+    const statusPing       = document.getElementById('statusPing');
 
     let playerMap   = {}; 
     let currentData = []; 
     let eventOrder  = []; 
     let eventStats  = {}; 
 
-    // Utils
+    // --- MATH & UTILS ---
     function mean(arr){ if(!arr.length) return 0; return arr.reduce((a,b)=>a+b,0)/arr.length; }
     function stddev(arr){
       if (arr.length <= 1) return 0;
@@ -193,35 +263,43 @@
     }
     function toFixedSafe(x, d=2){ return Number.isFinite(x) ? x.toFixed(d) : '—'; }
 
-    function renderSparkline(values, width=80, height=28){
+    // Enhanced Sparkline (Cleaner, slightly thicker)
+    function renderSparkline(values, width=100, height=32){
       if (!values || values.length === 0) return '';
       const minV = Math.min(...values);
       const maxV = Math.max(...values);
       const pad = 4;
       const n = values.length;
       const step = (width - 2*pad) / Math.max(1, n-1);
-      const scaleY = (val)=>{
+      
+      const scaleY = (val) => {
         if (maxV === minV) return height/2;
         return pad + (height - 2*pad) * (1 - (val - minV)/(maxV - minV));
       };
-      const points = values.map((v,i)=>[pad + i*step, scaleY(v)]);
-      const pathD = points.map((p,i)=> (i===0?`M${p[0]},${p[1]}`:`L${p[0]},${p[1]}`)).join(' ');
-      return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+      
+      const points = values.map((v,i) => [pad + i*step, scaleY(v)]);
+      const pathD = points.map((p,i) => (i===0 ? `M${p[0]},${p[1]}` : `L${p[0]},${p[1]}`)).join(' ');
+      
+      // Determine trend color based on start vs end
+      const start = values[0];
+      const end = values[values.length-1];
+      const colorClass = end >= start ? 'text-emerald-400' : 'text-rose-400';
+
+      return `<svg class="sparkline ${colorClass} opacity-80" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
         <path d="${pathD}" stroke="currentColor"></path>
+        <circle cx="${points[points.length-1][0]}" cy="${points[points.length-1][1]}" r="2" fill="currentColor" />
       </svg>`;
     }
 
     /* -------------------- AUTO FETCH LOGIC -------------------- */
     async function loadGithubData() {
-      // Ensure overlay is visible at start
       loadingOverlay.classList.remove('hidden');
-      statusMsg.textContent = 'Syncing data...';
+      statusMsg.textContent = 'Syncing...';
       
       try {
         const response = await fetch('./' + GITHUB_FILE_NAME);
         
         if (!response.ok) {
-            // If file is missing, we throw error but we MUST clear the overlay
             throw new Error(`Could not find ${GITHUB_FILE_NAME}`);
         }
 
@@ -234,40 +312,28 @@
         const sheet = XLSX.utils.sheet_to_json(ws, { header: 1 });
         processSheet(sheet);
         
-        statusMsg.textContent = 'Data loaded successfully';
-        statusMsg.classList.add('text-emerald-600');
-        
+        statusMsg.textContent = 'Live Data';
+        statusMsg.className = 'text-xs font-medium text-emerald-400';
+        statusDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+        statusPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+
       } catch (error) {
         console.error(error);
-        statusMsg.textContent = 'Auto-load failed. Please upload manually.';
-        statusMsg.classList.add('text-red-500');
-        // Optional: Alert user only if it's a real error, not just missing file on first run
-        // alert(`Auto-load Error: ${error.message}`);
+        statusMsg.textContent = 'Sync Failed';
+        statusMsg.className = 'text-xs font-medium text-rose-500';
+        statusDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-rose-500';
+        statusPing.className = 'hidden'; // Stop ping on error
+        alert(`Data Load Error: ${error.message}\n\nPlease ensure "${GITHUB_FILE_NAME}" is in the repo.`);
       } finally {
-        // THIS IS THE FIX: forcefully hide overlay no matter what happens
         setTimeout(() => {
-            loadingOverlay.classList.add('hidden');
-            loadingOverlay.style.display = 'none'; // Double assurance
-        }, 500); // Small delay so user sees "Success" state if they want
+            loadingOverlay.style.opacity = '0';
+            setTimeout(() => {
+                loadingOverlay.classList.add('hidden');
+                loadingOverlay.style.display = 'none';
+            }, 500);
+        }, 600);
       }
     }
-
-    /* -------------------- File handling -------------------- */
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const data = new Uint8Array(evt.target.result);
-        const wb   = XLSX.read(data, { type: 'array' });
-        const ws   = wb.Sheets['Tourneys'] || wb.Sheets[wb.SheetNames[0]];
-        if (!ws) { alert('No sheet named "Tourneys" found.'); return; }
-        const sheet = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        processSheet(sheet);
-        statusMsg.textContent = 'Manual file loaded';
-      };
-      reader.readAsArrayBuffer(file);
-    });
 
     function processSheet(sheet){
       playerMap = {};
@@ -318,11 +384,12 @@
       }));
 
       summaryContainer.classList.remove('hidden');
+      // Small delay to trigger fade in
+      setTimeout(() => summaryContainer.classList.remove('opacity-0'), 50);
       renderSummary();
       renderTable();
     }
 
-    // Render Helpers
     function renderSummary(){
       if (!currentData.length) return;
       const minEventsForAvg = 5;
@@ -330,22 +397,24 @@
       const topAvgCandidates = [...currentData].filter(d=>d.events >= minEventsForAvg).sort((a,b)=>b.average - a.average);
       const topAvg = topAvgCandidates.length ? topAvgCandidates[0] : null;
       const topEvents = [...currentData].sort((a,b)=>b.events - a.events)[0];
+
+      // Helper for Bento Card
+      const card = (label, val, sub) => `
+        <div class="glass-panel rounded-xl p-5 border border-white/5 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <svg class="w-16 h-16 text-emerald-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z"/></svg>
+            </div>
+            <p class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1">${label}</p>
+            <p class="text-3xl font-bold text-white tracking-tight tabular-nums">${val}</p>
+            <p class="text-sm text-emerald-400 mt-1 font-medium">${sub}</p>
+        </div>
+      `;
+
       summaryContainer.innerHTML = `
-        <div class="bg-emerald-500/10 dark:bg-emerald-500/20 p-4 rounded-xl text-center shadow-sm">
-          <p class="text-sm font-medium">Top Total PVI</p>
-          <p class="text-lg font-semibold mt-1">${topTotal.player}</p>
-          <p class="text-2xl font-bold">${topTotal.total.toFixed(2)}</p>
-        </div>
-        <div class="bg-indigo-500/10 dark:bg-indigo-500/20 p-4 rounded-xl text-center shadow-sm">
-          <p class="text-sm font-medium">Top Avg PVI (≥${minEventsForAvg} events)</p>
-          <p class="text-lg font-semibold mt-1">${topAvg ? topAvg.player : '—'}</p>
-          <p class="text-2xl font-bold">${topAvg ? topAvg.average.toFixed(2) : '—'}</p>
-        </div>
-        <div class="bg-amber-500/10 dark:bg-amber-500/20 p-4 rounded-xl text-center shadow-sm">
-          <p class="text-sm font-medium">Most Events Played</p>
-          <p class="text-lg font-semibold mt-1">${topEvents.player}</p>
-          <p class="text-2xl font-bold">${topEvents.events}</p>
-        </div>`;
+        ${card('Leader (Total PVI)', topTotal.total.toFixed(2), topTotal.player)}
+        ${card(`Leader (Avg > ${minEventsForAvg})`, topAvg ? topAvg.average.toFixed(2) : '—', topAvg ? topAvg.player : '—')}
+        ${card('Ironman (Events)', topEvents.events, topEvents.player)}
+      `;
     }
 
     function renderTable(){
@@ -354,9 +423,11 @@
       const sortKey     = sortSelect.value;
       const onlyAbove1  = above1Toggle.checked;
       const outliersOn  = outlierToggle.checked;
+      
       const currentField = new Set(
         fieldInput.value.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean).map(s=>s.toLowerCase())
       );
+
       const data = currentData
         .filter(d => d.player.toLowerCase().includes(term))
         .filter(d => d.events >= minEvents)
@@ -370,36 +441,46 @@
           if (sortKey === 'tm')      return b.tm      - a.tm;
           return 0;
         });
+
       tableBody.innerHTML = data.map(d => {
         const highlight = currentField.has(d.player.toLowerCase());
         const rowClasses = [
-          'hover:bg-gray-50','dark:hover:bg-gray-700','cursor-pointer','transition'
+          'group', 'hover:bg-gray-800/50', 'transition-colors', 'duration-150', 'cursor-pointer', 'border-b', 'border-gray-800/50'
         ];
-        if (highlight) rowClasses.push('bg-amber-100','dark:bg-amber-900/40','font-semibold');
+        if (highlight) rowClasses.push('bg-emerald-900/20');
+
         const ciDisp = (d.ci === Infinity) ? '∞' : toFixedSafe(d.ci, 2);
+        
+        // Trend Momentum Chip
         const tmVal = d.tm;
-        let tmChipClass = 'gray', tmSign = '';
-        if (tmVal > 0.05) tmChipClass = 'green', tmSign = '+';
-        else if (tmVal < -0.05) tmChipClass = 'red';
-        const tmChip = `<span class="chip ${tmChipClass}" title="Avg(last 3) − Avg(prev 3)">${tmSign}${toFixedSafe(tmVal,2)}</span>`;
-        const spark = renderSparkline(d.series);
+        let tmClass = 'bg-gray-800 text-gray-400';
+        let tmIcon = '';
+        if (tmVal > 0.05) { tmClass = 'bg-emerald-500/10 text-emerald-400'; tmIcon = '▲'; }
+        else if (tmVal < -0.05) { tmClass = 'bg-rose-500/10 text-rose-400'; tmIcon = '▼'; }
+        
+        const tmChip = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${tmClass} tabular-nums">${tmIcon} ${Math.abs(tmVal).toFixed(2)}</span>`;
+
         return `
           <tr class="${rowClasses.join(' ')}" data-player="${d.player}">
-            <td class="px-4 py-3 font-medium">${d.player}</td>
-            <td class="px-4 py-3 text-center">${d.allAboveOne ? '✔️' : ''}</td>
-            <td class="px-4 py-3 text-right">${toFixedSafe(d.total)}</td>
-            <td class="px-4 py-3 text-right">${toFixedSafe(d.average)}</td>
-            <td class="px-4 py-3 text-right">${toFixedSafe(d.std)}</td>
-            <td class="px-4 py-3 text-right">${ciDisp}</td>
-            <td class="px-4 py-3 text-right">${tmChip}</td>
-            <td class="px-4 py-3 text-right">${d.events}</td>
-            <td class="px-2 py-3 text-right">${spark}</td>
+            <td class="px-6 py-4 font-medium text-gray-200 group-hover:text-white">${d.player}</td>
+            <td class="px-4 py-4 text-center">
+                ${d.allAboveOne 
+                  ? '<div class="mx-auto w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center"><svg class="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>' 
+                  : '<span class="text-gray-700 text-xs">•</span>'}
+            </td>
+            <td class="px-6 py-4 text-right font-bold text-white tabular-nums">${toFixedSafe(d.total)}</td>
+            <td class="px-6 py-4 text-right tabular-nums">${toFixedSafe(d.average)}</td>
+            <td class="px-6 py-4 text-right tabular-nums text-gray-400">${toFixedSafe(d.std)}</td>
+            <td class="px-6 py-4 text-right tabular-nums text-gray-400">${ciDisp}</td>
+            <td class="px-6 py-4 text-right">${tmChip}</td>
+            <td class="px-6 py-4 text-right tabular-nums text-gray-400">${d.events}</td>
+            <td class="px-6 py-4 text-right">${renderSparkline(d.series)}</td>
           </tr>`;
       }).join('');
+
       [...tableBody.querySelectorAll('tr')].forEach(tr => {
         tr.addEventListener('click', () => {
-          const player = tr.dataset.player;
-          openPlayerModal(player, outliersOn);
+          openPlayerModal(tr.dataset.player, outliersOn);
         });
       });
     }
@@ -407,49 +488,59 @@
     function openPlayerModal(player, outliersOn){
       const stats = playerMap[player];
       modalTitle.textContent = player;
+      
       const rows = [];
       for (const ev of eventOrder){
         if (!(ev in stats.scores)) continue;
         const p = stats.scores[ev];
         const es = eventStats[ev] || {mean:0,std:0};
         const z = es.std > 0 ? (p - es.mean) / es.std : 0;
+        
         let badge = '';
         if (outliersOn){
-          const cls = Math.abs(z) >= 2 ? (z > 0 ? 'green' : 'red') : 'gray';
-          const label = Math.abs(z) >= 2 ? (z > 0 ? 'High Outlier' : 'Low Outlier') : 'Within Norm';
-          badge = `<span class="chip ${cls}" title="Z-Score">${label} • z=${toFixedSafe(z,2)}</span>`;
+          if (Math.abs(z) >= 2) {
+             const color = z > 0 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+             const text = z > 0 ? 'HIGH OUTLIER' : 'LOW OUTLIER';
+             badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold border ${color}">${text} (z=${z.toFixed(1)})</span>`;
+          } else {
+             badge = `<span class="text-xs text-gray-600">z=${z.toFixed(1)}</span>`;
+          }
         } else {
-          badge = `<span class="chip gray" title="Z-Score">z=${toFixedSafe(z,2)}</span>`;
+          badge = `<span class="text-xs text-gray-600">z=${z.toFixed(1)}</span>`;
         }
-        rows.push(`<div class="flex justify-between items-center py-1">
-          <span>${ev}</span>
-          <span class="font-semibold">${toFixedSafe(p)}</span>
-          ${badge}
+
+        rows.push(`
+        <div class="flex justify-between items-center py-3 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 rounded transition-colors">
+          <span class="text-gray-400 text-sm">${ev}</span>
+          <div class="flex items-center gap-3">
+             ${badge}
+             <span class="font-bold text-white tabular-nums w-12 text-right">${toFixedSafe(p)}</span>
+          </div>
         </div>`);
       }
+
       const ciDisp = (stats.std === 0 && stats.events > 1) ? '∞' : toFixedSafe(stats.avg / (stats.std || 1),2);
       const tmDisp = toFixedSafe(chunkMomentum(stats.series),2);
-      modalBody.innerHTML = `
-        <div class="grid grid-cols-2 gap-3 mb-2 text-sm">
-          <div class="bg-emerald-500/10 dark:bg-emerald-500/20 p-3 rounded">
-            <div class="opacity-70">Avg PVI</div>
-            <div class="text-lg font-semibold">${toFixedSafe(stats.total / stats.events)}</div>
-          </div>
-          <div class="bg-indigo-500/10 dark:bg-indigo-500/20 p-3 rounded">
-            <div class="opacity-70">Volatility (StdDev)</div>
-            <div class="text-lg font-semibold">${toFixedSafe(stats.std)}</div>
-          </div>
-          <div class="bg-amber-500/10 dark:bg-amber-500/20 p-3 rounded">
-            <div class="opacity-70">Consistency Index</div>
-            <div class="text-lg font-semibold">${ciDisp}</div>
-          </div>
-          <div class="bg-rose-500/10 dark:bg-rose-500/20 p-3 rounded">
-            <div class="opacity-70">Trend Momentum</div>
-            <div class="text-lg font-semibold">${tmDisp}</div>
-          </div>
+      
+      const kpi = (lbl, val) => `
+        <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+            <div class="text-[10px] uppercase text-gray-500 tracking-wider mb-1">${lbl}</div>
+            <div class="text-lg font-bold text-white tabular-nums">${val}</div>
         </div>
-        <div class="divide-y divide-gray-200 dark:divide-gray-700">${rows.join('')}</div>
       `;
+
+      modalBody.innerHTML = `
+        <div class="grid grid-cols-2 gap-3 mb-6">
+          ${kpi('Average PVI', toFixedSafe(stats.total / stats.events))}
+          ${kpi('Volatility', toFixedSafe(stats.std))}
+          ${kpi('Consistency', ciDisp)}
+          ${kpi('Momentum', tmDisp)}
+        </div>
+        <div class="space-y-1">
+            ${rows.join('')}
+        </div>
+      `;
+      
       modal.classList.remove('hidden');
     }
 
@@ -460,16 +551,18 @@
     above1Toggle.addEventListener('change', renderTable);
     outlierToggle.addEventListener('change', renderTable);
     applyFieldBtn.addEventListener('click', renderTable);
-    modalClose.addEventListener('click', () => modal.classList.add('hidden'));
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
     
-    // Fail-safe: click overlay to remove it
+    // Modal Interactions
+    const closeModal = () => modal.classList.add('hidden');
+    modalClose.addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', closeModal);
+    // Overlay Fail-safe
     loadingOverlay.addEventListener('click', () => {
         loadingOverlay.classList.add('hidden');
         loadingOverlay.style.display = 'none';
     });
 
-    // *** Initialize Auto-Load ***
+    // Start
     window.addEventListener('DOMContentLoaded', loadGithubData);
 
   </script>
